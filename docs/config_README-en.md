@@ -128,6 +128,9 @@ These are options related to the configuration of the data set. They cannot be d
     * This corresponds to the command-line argument `--train_batch_size`.
 * `max_bucket_reso`, `min_bucket_reso`
     * Specify the maximum and minimum resolutions of the bucket. It must be divisible by `bucket_reso_steps`.
+* `bucket_no_upscale`
+    * Prevents source images from being enlarged. The normal predefined bucket is selected first; if the image can fill that bucket by downscaling, the same resize and crop behavior used when this option is disabled is applied.
+    * Only when the selected bucket would require upscaling is a smaller bucket created from the original image size. Its dimensions are rounded down to multiples of `bucket_reso_steps`, and the remaining edges are cropped rather than padded.
 * `skip_image_resolution`
     * Images whose original resolution (area) is equal to or smaller than the specified resolution will be skipped. Specify as `'size'` or `[width, height]`. This corresponds to the command-line argument `--skip_image_resolution`.
     * Useful when sharing the same image directory across multiple datasets with different resolutions, to exclude low-resolution source images from higher-resolution datasets.

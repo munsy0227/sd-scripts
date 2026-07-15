@@ -106,12 +106,7 @@ def main(args):
     bucket_manager = dataset_util.BucketManager(
         args.bucket_no_upscale, max_reso, args.min_bucket_reso, args.max_bucket_reso, args.bucket_reso_steps
     )
-    if not args.bucket_no_upscale:
-        bucket_manager.make_buckets()
-    else:
-        logger.warning(
-            "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically / bucket_no_upscaleが指定された場合は、bucketの解像度は画像サイズから自動計算されるため、min_bucket_resoとmax_bucket_resoは無視されます"
-        )
+    bucket_manager.make_buckets()
 
     # 画像をひとつずつ適切なbucketに割り当てながらlatentを計算する
     img_ar_errors = []
@@ -248,7 +243,8 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bucket_no_upscale",
         action="store_true",
-        help="make bucket for each image without upscaling / 画像を拡大せずbucketを作成します",
+        help="prevent upscaling while using the standard predefined buckets for images that only need downscaling"
+        " / 拡大が必要な画像のみ元サイズからbucketを作成し、縮小できる画像には通常の定義済みbucketを使用します",
     )
     parser.add_argument(
         "--mixed_precision",

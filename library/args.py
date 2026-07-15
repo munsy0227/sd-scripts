@@ -1026,7 +1026,8 @@ def add_dataset_arguments(
     parser.add_argument(
         "--bucket_no_upscale",
         action="store_true",
-        help="make bucket for each image without upscaling / 画像を拡大せずbucketを作成します",
+        help="prevent upscaling while using the standard predefined buckets for images that only need downscaling"
+        " / 拡大が必要な画像のみ元サイズからbucketを作成し、縮小できる画像には通常の定義済みbucketを使用します",
     )
     parser.add_argument(
         "--resize_interpolation",

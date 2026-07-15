@@ -250,60 +250,29 @@ class BucketManager:
 
     def select_bucket(self, image_width, image_height):
         aspect_ratio = image_width / image_height
-        if not self.no_upscale:
-            # 拡大および縮小を行う
-            # 同じaspect ratioがあるかもしれないので（fine tuningで、no_upscale=Trueで前処理した場合）、解像度が同じものを優先する
-            reso = (image_width, image_height)
-            if reso in self.predefined_resos_set:
-                pass
-            else:
-                ar_errors = self.predefined_aspect_ratios - aspect_ratio
-                predefined_bucket_id = np.abs(ar_errors).argmin()  # 当該解像度以外でaspect ratio errorが最も少ないもの
-                reso = self.predefined_resos[predefined_bucket_id]
+        # 同じaspect ratioがあるかもしれないので（fine tuningで、no_upscale=Trueで前処理した場合）、解像度が同じものを優先する
+        reso = (image_width, image_height)
+        if reso not in self.predefined_resos_set:
+            ar_errors = self.predefined_aspect_ratios - aspect_ratio
+            predefined_bucket_id = np.abs(ar_errors).argmin()  # 当該解像度以外でaspect ratio errorが最も少ないもの
+            reso = self.predefined_resos[predefined_bucket_id]
 
-            ar_reso = reso[0] / reso[1]
-            if aspect_ratio > ar_reso:  # 横が長い→縦を合わせる
-                scale = reso[1] / image_height
-            else:
-                scale = reso[0] / image_width
-
-            resized_size = (int(image_width * scale + 0.5), int(image_height * scale + 0.5))
-            # logger.info(f"use predef, {image_width}, {image_height}, {reso}, {resized_size}")
+        ar_reso = reso[0] / reso[1]
+        if aspect_ratio > ar_reso:  # 横が長い→縦を合わせる
+            scale = reso[1] / image_height
         else:
-            # 縮小のみを行う
-            if image_width * image_height > self.max_area:
-                # 画像が大きすぎるのでアスペクト比を保ったまま縮小することを前提にbucketを決める
-                resized_width = math.sqrt(self.max_area * aspect_ratio)
-                resized_height = self.max_area / resized_width
-                assert abs(resized_width / resized_height - aspect_ratio) < 1e-2, "aspect is illegal"
+            scale = reso[0] / image_width
 
-                # リサイズ後の短辺または長辺をreso_steps単位にする：aspect ratioの差が少ないほうを選ぶ
-                # 元のbucketingと同じロジック
-                b_width_rounded = self.round_to_steps(resized_width)
-                b_height_in_wr = self.round_to_steps(b_width_rounded / aspect_ratio)
-                ar_width_rounded = b_width_rounded / b_height_in_wr
-
-                b_height_rounded = self.round_to_steps(resized_height)
-                b_width_in_hr = self.round_to_steps(b_height_rounded * aspect_ratio)
-                ar_height_rounded = b_width_in_hr / b_height_rounded
-
-                # logger.info(b_width_rounded, b_height_in_wr, ar_width_rounded)
-                # logger.info(b_width_in_hr, b_height_rounded, ar_height_rounded)
-
-                if abs(ar_width_rounded - aspect_ratio) < abs(ar_height_rounded - aspect_ratio):
-                    resized_size = (b_width_rounded, int(b_width_rounded / aspect_ratio + 0.5))
-                else:
-                    resized_size = (int(b_height_rounded * aspect_ratio + 0.5), b_height_rounded)
-                # logger.info(resized_size)
-            else:
-                resized_size = (image_width, image_height)  # リサイズは不要
-
+        if self.no_upscale and scale > 1.0:
+            # 定義済みbucketに合わせると拡大が必要な画像のみ、元画像のサイズからbucketを作成する
+            resized_size = (image_width, image_height)
             # 画像のサイズ未満をbucketのサイズとする（paddingせずにcroppingする）
             bucket_width = resized_size[0] - resized_size[0] % self.reso_steps
             bucket_height = resized_size[1] - resized_size[1] % self.reso_steps
-            # logger.info(f"use arbitrary {image_width}, {image_height}, {resized_size}, {bucket_width}, {bucket_height}")
-
             reso = (bucket_width, bucket_height)
+        else:
+            # 拡大が不要な画像は、no_upscaleでも通常の定義済みbucketに合わせて縮小する
+            resized_size = (int(image_width * scale + 0.5), int(image_height * scale + 0.5))
 
         self.add_if_new_reso(reso)
 
@@ -657,12 +626,7 @@ class BaseDataset(torch.utils.data.Dataset):
                     self.max_bucket_reso,
                     self.bucket_reso_steps,
                 )
-                if not self.bucket_no_upscale:
-                    self.bucket_manager.make_buckets()
-                else:
-                    logger.warning(
-                        "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically / bucket_no_upscaleが指定された場合は、bucketの解像度は画像サイズから自動計算されるため、min_bucket_resoとmax_bucket_resoは無視されます"
-                    )
+                self.bucket_manager.make_buckets()
 
             img_ar_errors = []
             for image_info in self.image_data.values():

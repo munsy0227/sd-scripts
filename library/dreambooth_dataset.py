@@ -12,6 +12,7 @@ import os
 from typing import List, Optional, Sequence, Tuple
 
 from tqdm import tqdm
+from library import moss_caption
 
 from library.dataset import (
     BaseDataset,
@@ -87,7 +88,7 @@ class DreamBoothDataset(BaseDataset):
             self.bucket_reso_steps = None  # この情報は使われない
             self.bucket_no_upscale = False
 
-        def read_caption(img_path, caption_extension, enable_wildcard):
+        def read_caption(img_path, caption_extension, enable_wildcard, subset):
             # captionの候補ファイル名を作る
             base_name = os.path.splitext(img_path)[0]
             base_name_face_det = base_name
@@ -99,6 +100,8 @@ class DreamBoothDataset(BaseDataset):
             caption = None
             for cap_path in cap_paths:
                 if os.path.isfile(cap_path):
+                    if subset.caption_format != "text":
+                        return moss_caption.read_caption(cap_path, subset.caption_format, subset.moss_caption_length, enable_wildcard)
                     with open(cap_path, "rt", encoding="utf-8") as f:
                         try:
                             lines = f.readlines()
@@ -119,7 +122,7 @@ class DreamBoothDataset(BaseDataset):
                 return [], [], []
 
             info_cache_file = os.path.join(subset.image_dir, self.IMAGE_INFO_CACHE_FILE)
-            use_cached_info_for_subset = subset.cache_info
+            use_cached_info_for_subset = subset.cache_info and subset.caption_format == "text"
             if use_cached_info_for_subset:
                 logger.info(
                     f"using cached image info for this subset / このサブセットで、キャッシュされた画像情報を使います: {info_cache_file}"
@@ -228,7 +231,7 @@ class DreamBoothDataset(BaseDataset):
                 captions = []
                 missing_captions = []
                 for img_path in tqdm(img_paths, desc="read caption"):
-                    cap_for_img = read_caption(img_path, subset.caption_extension, subset.enable_wildcard)
+                    cap_for_img = read_caption(img_path, subset.caption_extension, subset.enable_wildcard, subset)
                     if cap_for_img is None and subset.class_tokens is None:
                         logger.warning(
                             f"neither caption file nor class tokens are found. use empty caption for {img_path} / キャプションファイルもclass tokenも見つかりませんでした。空のキャプションを使用します: {img_path}"

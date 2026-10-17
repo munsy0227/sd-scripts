@@ -47,7 +47,7 @@ from tqdm import tqdm
 from transformers import CLIPTokenizer
 
 import library.model_util as model_util
-from library import accelerator_setup
+from library import accelerator_setup, moss_caption
 from library.device_utils import clean_memory_on_device
 from library.strategy_base import (
     LatentsCachingStrategy,
@@ -499,7 +499,16 @@ class BaseDataset(torch.utils.data.Dataset):
     def add_replacement(self, str_from, str_to):
         self.replacements[str_from] = str_to
 
-    def process_caption(self, subset: BaseSubset, caption):
+    def process_caption(self, subset: BaseSubset, caption, geometry=None, flipped=False):
+        preserve_lines = isinstance(caption, moss_caption.StructuredCaption)
+        if getattr(subset, "caption_format", "text") != "text":
+            if moss_caption.is_layout(caption):
+                if (subset.caption_dropout_rate > 0 and random.random() < subset.caption_dropout_rate) or (
+                    subset.caption_dropout_every_n_epochs > 0
+                    and self.current_epoch % subset.caption_dropout_every_n_epochs == 0
+                ):
+                    return ""
+                return moss_caption.render_layout(caption, geometry, flipped, subset.caption_prefix, subset.caption_suffix)
         # caption に prefix/suffix を付ける
         if subset.caption_prefix:
             caption = subset.caption_prefix + " " + caption
@@ -518,7 +527,7 @@ class BaseDataset(torch.utils.data.Dataset):
             caption = ""
         else:
             # process wildcards
-            if subset.enable_wildcard:
+            if subset.enable_wildcard and not preserve_lines:
                 # if caption is multiline, random choice one line
                 if "\n" in caption:
                     caption = random.choice(caption.split("\n"))
@@ -543,7 +552,8 @@ class BaseDataset(torch.utils.data.Dataset):
                 caption = caption.replace(replacer1, "{").replace(replacer2, "}")
             else:
                 # if caption is multiline, use the first line
-                caption = caption.split("\n")[0]
+                if not preserve_lines:
+                    caption = caption.split("\n")[0]
 
             if subset.shuffle_caption or subset.token_warmup_step > 0 or subset.caption_tag_dropout_rate > 0:
                 fixed_tokens = []
@@ -874,6 +884,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
         logger.info("checking cache validity...")
         for i, info in enumerate(tqdm(image_infos)):
+            caching_strategy.prepare_info(info, self.image_to_subset[info.image_key], self)
             # check disk cache exists and size of text encoder outputs
             if caching_strategy.cache_to_disk:
                 te_out_npz = caching_strategy.get_outputs_npz_path(info.absolute_path)
@@ -1017,6 +1028,10 @@ class BaseDataset(torch.utils.data.Dataset):
             loss_weights.append(self.prior_loss_weight if image_info.is_reg else 1.0)
 
             flipped = subset.flip_aug and random.random() < 0.5  # not flipped or flipped with 50% chance
+            layout_geometry = None
+            if getattr(subset, "caption_format", "text") != "text":
+                if moss_caption.is_layout(image_info.caption):
+                    layout_geometry = moss_caption.center_geometry(image_info)
 
             # image/latentsを処理する
             if image_info.latents is not None:  # cache_latents=Trueの場合
@@ -1050,13 +1065,14 @@ class BaseDataset(torch.utils.data.Dataset):
                 )
                 im_h, im_w = img.shape[0:2]
 
-                if self.enable_bucket:
+                if self.enable_bucket or layout_geometry is not None:
                     img, original_size, crop_ltrb = trim_and_resize_if_required(
                         subset.random_crop,
                         img,
                         image_info.bucket_reso,
                         image_info.resized_size,
                         resize_interpolation=image_info.resize_interpolation,
+                        transform=layout_geometry,
                     )
                 else:
                     if face_cx > 0:  # 顔位置情報あり
@@ -1119,7 +1135,8 @@ class BaseDataset(torch.utils.data.Dataset):
             latents_list.append(latents)
             alpha_mask_list.append(alpha_mask)
 
-            target_size = (image.shape[2], image.shape[1]) if image is not None else (latents.shape[2] * 8, latents.shape[1] * 8)
+            stride = self.latents_caching_strategy.latent_stride if self.latents_caching_strategy is not None else 8
+            target_size = (image.shape[2], image.shape[1]) if image is not None else (latents.shape[-1] * stride, latents.shape[-2] * stride)
 
             if not flipped:
                 crop_left_top = (crop_ltrb[0], crop_ltrb[1])
@@ -1154,7 +1171,7 @@ class BaseDataset(torch.utils.data.Dataset):
             text_encoder_outputs_list.append(text_encoder_outputs)
 
             if tokenization_required:
-                caption = self.process_caption(subset, image_info.caption)
+                caption = self.process_caption(subset, image_info.caption, layout_geometry, flipped)
                 input_ids = [ids[0] for ids in self.tokenize_strategy.tokenize(caption)]  # remove batch dimension
 
             input_ids_list.append(input_ids)

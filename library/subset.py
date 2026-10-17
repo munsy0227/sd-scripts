@@ -108,6 +108,8 @@ class DreamBoothSubset(BaseSubset):
         validation_seed: Optional[int] = None,
         validation_split: Optional[float] = 0.0,
         resize_interpolation: Optional[str] = None,
+        caption_format: str = "text",
+        moss_caption_length: str = "long",
     ) -> None:
         assert image_dir is not None, "image_dir must be specified / image_dirは指定が必須です"
 
@@ -144,6 +146,8 @@ class DreamBoothSubset(BaseSubset):
         if self.caption_extension and not self.caption_extension.startswith("."):
             self.caption_extension = "." + self.caption_extension
         self.cache_info = cache_info
+        self.caption_format = caption_format
+        self.moss_caption_length = moss_caption_length
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):

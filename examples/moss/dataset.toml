@@ -1,0 +1,29 @@
+[general]
+caption_extension = ".txt"
+caption_format = "auto"
+moss_caption_length = "long"
+shuffle_caption = false
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+bucket_reso_steps = 16
+
+[[datasets.subsets]]
+image_dir = "/path/to/existing-anima-txt-images"
+num_repeats = 1
+
+[[datasets.subsets]]
+image_dir = "/path/to/caption-json-images"
+caption_extension = ".json"
+caption_format = "moss_caption"
+moss_caption_length = "long"
+
+[[datasets.subsets]]
+image_dir = "/path/to/layout-json-images"
+caption_extension = ".json"
+caption_format = "moss_layout"
+caption_prefix = "style_trigger"
+random_crop = false
+flip_aug = false

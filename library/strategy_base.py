@@ -376,6 +376,10 @@ class TextEncoderOutputsCachingStrategy:
     def get_outputs_npz_path(self, image_abs_path: str) -> str:
         raise NotImplementedError
 
+    def prepare_info(self, info, subset, dataset):
+        """Prepare model-specific rendered captions and cache identity before checking disk."""
+        pass
+
     def load_outputs_npz(self, npz_path: str) -> List[np.ndarray]:
         raise NotImplementedError
 
@@ -389,6 +393,7 @@ class TextEncoderOutputsCachingStrategy:
 
 
 class LatentsCachingStrategy:
+    latent_stride = 8
     # TODO commonize utility functions to this class, such as npz handling etc.
 
     _strategy = None  # strategy instance: actual strategy class

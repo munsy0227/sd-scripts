@@ -222,7 +222,8 @@ def get_crop_ltrb(bucket_reso: Tuple[int, int], image_size: Tuple[int, int]):
 
 
 def trim_and_resize_if_required(
-    random_crop: bool, image: np.ndarray, reso, resized_size: Tuple[int, int], resize_interpolation: Optional[str] = None
+    random_crop: bool, image: np.ndarray, reso, resized_size: Tuple[int, int], resize_interpolation: Optional[str] = None,
+    *, transform: Optional[dict] = None,
 ) -> Tuple[np.ndarray, Tuple[int, int], Tuple[int, int, int, int]]:
     image_height, image_width = image.shape[0:2]
     original_size = (image_width, image_height)  # size before resize
@@ -232,14 +233,17 @@ def trim_and_resize_if_required(
 
     image_height, image_width = image.shape[0:2]
 
+    crop_x = crop_y = 0
     if image_width > reso[0]:
         trim_size = image_width - reso[0]
         p = trim_size // 2 if not random_crop else random.randint(0, trim_size)
+        crop_x = p
         # logger.info(f"w {trim_size} {p}")
         image = image[:, p : p + reso[0]]
     if image_height > reso[1]:
         trim_size = image_height - reso[1]
         p = trim_size // 2 if not random_crop else random.randint(0, trim_size)
+        crop_y = p
         # logger.info(f"h {trim_size} {p})
         image = image[p : p + reso[1]]
 
@@ -247,6 +251,8 @@ def trim_and_resize_if_required(
     # I have no idea how to reflect the cropped value in crop left/top in the case of random crop
 
     crop_ltrb = get_crop_ltrb(reso, original_size)
+    if transform is not None:
+        transform.update(original=original_size, resized=resized_size, target=reso, crop=(crop_x, crop_y))
 
     assert image.shape[0] == reso[1] and image.shape[1] == reso[0], f"internal error, illegal trimmed size: {image.shape}, {reso}"
     return image, original_size, crop_ltrb

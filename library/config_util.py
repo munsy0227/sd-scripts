@@ -86,6 +86,8 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     caption_extension: str = ".caption"
     cache_info: bool = False
     alpha_mask: bool = False
+    caption_format: str = "text"
+    moss_caption_length: str = "long"
 
 
 @dataclass
@@ -210,6 +212,8 @@ class ConfigSanitizer:
     }
     # DB means DreamBooth
     DB_SUBSET_ASCENDABLE_SCHEMA = {
+        "caption_format": Any("auto", "text", "moss_caption", "moss_layout"),
+        "moss_caption_length": Any("long", "medium", "short"),
         "caption_extension": str,
         "class_tokens": str,
         "cache_info": bool,

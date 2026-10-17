@@ -1,0 +1,6 @@
+{
+  "summary": {"caption": "An anime girl waving against a pink plaid background.", "meta": ["anime"], "canvas": "single"},
+  "items": [{"label": "character", "caption": "A green-haired girl wearing white mittens, waving one arm.", "bbox": [-448, -256, 448, 256]}],
+  "bbox_format": "yxyx",
+  "bbox_coord_space": "abs_centralized"
+}

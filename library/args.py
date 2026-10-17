@@ -634,6 +634,14 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
     )
 
 
+def add_moss_training_arguments(parser: argparse.ArgumentParser):
+    parser.add_argument("--caption_format", choices=["auto", "text", "moss_caption", "moss_layout"], default="auto")
+    parser.add_argument("--moss_caption_length", choices=["long", "medium", "short"], default="long")
+    parser.add_argument("--moss_max_token_length", type=int, default=4096)
+    parser.add_argument("--moss_text_encoder_device", choices=["cpu", "accelerator"], default="cpu")
+    parser.set_defaults(network_module="lycoris.kohya", network_train_unet_only=True, caption_extension=".txt")
+
+
 def add_dit_training_arguments(parser: argparse.ArgumentParser):
     # Text encoder related arguments
     parser.add_argument(

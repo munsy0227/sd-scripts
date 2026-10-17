@@ -112,17 +112,22 @@ If you find this project helpful, please consider supporting its development via
 * **LUMINA**
 * **HunyuanImage-2.1**
 * **Anima**
+* **MOSS Image** (LoRA / LyCORIS LoKR / LoKR+DoRA adapter training)
 
 ### Features
 
 * LoRA training
-* Fine-tuning (native training, DreamBooth): except for HunyuanImage-2.1
+* Fine-tuning (native training, DreamBooth): except for HunyuanImage-2.1 and MOSS Image
 * Textual Inversion training: SD/SDXL
 * Inpainting model training: SD1.5 and SDXL
 * Image generation
 * Other utilities such as model conversion, image tagging, LoRA merging, etc.
 
 ## Documentation
+
+### MOSS Image fork extension
+
+* [MOSS Image training, TXT/JSON captions and ComfyUI workflow (Korean)](./docs/moss_train_network.md)
 
 ### Training Documentation (English and Japanese)
 

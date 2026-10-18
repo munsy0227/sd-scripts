@@ -1,6 +1,7 @@
 # MOSS-Image official network trainer
 
-This fork integrates the official stage 3 trainer at `cb5c24fc724f758fcb1e63969872f2f561ac1396`.
+This fork integrates official `dev` through `6a3290182c786541ccf292106782b51568e46da5`,
+including the stage 3 trainer at `cb5c24fc724f758fcb1e63969872f2f561ac1396` and its follow-up fixes.
 `moss_image_train_network.py` is the main implementation. The existing
 `moss_train_network.py` subclasses it to preserve the LyCORIS command, TOML,
 presets, and discrete uniform timestep sampling.

@@ -1,5 +1,7 @@
 # 공식 dev 전체 통합과 MOSS trainer 재구성
 
+후속: stage 3 및 최신 dev의 게시 작업은 [게시 기록](2026-10-18-moss-dev-publication.md)에 정리했다.
+
 ## 범위와 Git 상태
 
 - 사용자가 공식 dev 전체 통합, 기존 TXT/JSON·레이아웃·LoKR/DoRA·ComfyUI 연결 보존을 승인했다. 새 양자화 backend와 edit 학습은 제외했다.

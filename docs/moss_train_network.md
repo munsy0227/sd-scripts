@@ -1,6 +1,6 @@
 # MOSS Image 어댑터 학습과 ComfyUI 사용
 
-공식 sd-scripts `dev`와 stage 3 trainer 커밋 `cb5c24f`를 기반으로 표준 LoRA 또는 LyCORIS LoKR를 학습한다.
+공식 sd-scripts `dev`의 `6a329018`과 stage 3 trainer 커밋 `cb5c24f`를 기반으로 표준 LoRA 또는 LyCORIS LoKR를 학습한다.
 기존 `moss_train_network.py`는 공식 `moss_image_train_network.py`의 호환 진입점이다.
 LoKR는 full-matrix와 DoRA 조합을 지원한다. Qwen3.5 텍스트 인코더와 FLUX.2 VAE는 고정한다.
 기존 Anima 데이터셋의 `트리거, 캐릭터, 태그, 자연어 설명` TXT를 재작성할 필요가 없다.

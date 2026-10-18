@@ -613,7 +613,6 @@ def _sample_image_inference(
         uncond_skip_layers,
         seed,
         accelerator.device,
-        show_progress=False,
         training_shift=schedule.training_shift,
         num_train_timesteps=schedule.num_train_timesteps,
     )

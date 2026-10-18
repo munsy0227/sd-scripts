@@ -37,7 +37,7 @@ def parse_caption(text, caption_format="auto", length="long", source="caption"):
         raise ValueError(f"{source}: {exc}") from exc
 
 
-def read_caption(path, caption_format, length, enable_wildcard=False):
+def read_caption(path, caption_format, length, enable_wildcard=False, enable_multiline_caption=False):
     text = Path(path).read_text(encoding="utf-8-sig").strip()
     if not text:
         raise ValueError(f"{path}: caption file is empty")
@@ -46,7 +46,7 @@ def read_caption(path, caption_format, length, enable_wildcard=False):
     value = parse_caption(text, caption_format, length, str(path))
     if is_layout(value) or isinstance(value, StructuredCaption):
         return value
-    return value if enable_wildcard else value.splitlines()[0]
+    return value if enable_wildcard or enable_multiline_caption else value.splitlines()[0]
 
 
 def is_layout(caption):

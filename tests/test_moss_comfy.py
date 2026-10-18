@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from library.moss_models import MOSSImageTransformer
+from library.moss_image_models import MossImage as MOSSImageTransformer
 
 
 @pytest.fixture(scope="module")

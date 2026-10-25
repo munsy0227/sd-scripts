@@ -334,6 +334,30 @@ def test_training_loop_save_and_resume_with_real_dataset(
         assert (tmp_path / "output" / "legacy-portable.safetensors").is_file()
 
 
+def test_bf16_cached_dataset_with_prodigy_save_and_resume(tmp_path, monkeypatch):
+    import train_network
+
+    seen = []
+    original = train_network.NetworkTrainer.process_batch
+
+    def process_batch(self, batch, *args, **kwargs):
+        outputs = batch.get("text_encoder_outputs_list")
+        if outputs is not None:
+            assert outputs[0].dtype == outputs[2].dtype == torch.bfloat16
+            assert outputs[0].element_size() == 2
+            seen.append(outputs[0].numel())
+        return original(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(train_network.NetworkTrainer, "process_batch", process_batch)
+    run, _, _ = _training_case(tmp_path, monkeypatch, "txt")
+    flags = ["--optimizer_type", "Prodigy", "--learning_rate", "1.0"]
+    run(flags)
+    state = tmp_path / "output" / "moss-step00000001-state"
+    assert state.is_dir() and seen
+    run(flags + ["--resume", str(state), "--max_train_steps", "2"])
+    assert (tmp_path / "output" / "moss-step00000002-state").is_dir()
+
+
 def test_text_cache_rejects_changed_caption_and_length(tmp_path):
     identity = {"template": "test"}
     cache = strategy_moss.MossImageTextEncoderOutputsCachingStrategy(
@@ -511,7 +535,7 @@ def test_text_cache_migration_preserves_old_bytes_and_tracks_settings(tmp_path):
     )
     assert cache.is_disk_cached_outputs_expected(info.text_encoder_outputs_npz)
     outputs = cache.load_outputs_npz(info.text_encoder_outputs_npz)
-    assert len(outputs) == 5 and outputs[0].dtype == np.float32
+    assert len(outputs) == 5 and outputs[0].dtype == torch.bfloat16
     with np.load(info.text_encoder_outputs_npz) as data:
         assert data["prompt_embeds_0"].dtype == np.uint16
     info.caption = "updated"

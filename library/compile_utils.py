@@ -114,6 +114,7 @@ def compile_transformer(
     transformer: torch.nn.Module,
     target_blocks: list[Union[torch.nn.ModuleList, list[torch.nn.Module]]],
     disable_linear: bool,
+    options: dict | None = None,
 ) -> torch.nn.Module:
     """Compile each block in ``target_blocks`` individually with torch.compile.
 
@@ -125,6 +126,7 @@ def compile_transformer(
             in place; ``blocks[i]`` is replaced by its compiled version.
         disable_linear: when True, disable compilation for Linear layers in the given
             blocks first (required for swapped blocks under block swapping).
+        options: Inductor options merged with the selected mode's preset.
     """
     if disable_linear:
         logger.info("Disabling Linear layers from torch.compile for block-swapped blocks...")
@@ -135,6 +137,10 @@ def compile_transformer(
     compile_dynamic = None
     if args.compile_dynamic is not None:
         compile_dynamic = {"true": True, "false": False, "auto": None}[args.compile_dynamic.lower()]
+    compile_mode = args.compile_mode
+    if options is not None:
+        options = {**torch._inductor.list_mode_options(compile_mode), **options}
+        compile_mode = None
 
     logger.info(
         f"Compiling DiT blocks with torch.compile: backend={args.compile_backend}, mode={args.compile_mode}, "
@@ -157,8 +163,9 @@ def compile_transformer(
             blocks[i] = torch.compile(
                 block,
                 backend=args.compile_backend,
-                mode=args.compile_mode,
+                mode=compile_mode,
                 dynamic=compile_dynamic,
                 fullgraph=args.compile_fullgraph,
+                options=options,
             )
     return transformer

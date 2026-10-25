@@ -277,6 +277,66 @@ def test_per_block_compile_preserves_forward_and_backward():
     torch._dynamo.reset()
 
 
+@pytest.mark.parametrize("mode", ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"])
+def test_moss_compile_keeps_mode_and_eager_precision(monkeypatch, mode):
+    args = official.setup_parser().parse_args(["--compile", "--compile_mode", mode])
+    model = make_model(layers=1)
+    calls = []
+
+    def compile(block, **kwargs):
+        calls.append(kwargs)
+        return block
+
+    monkeypatch.setattr(torch, "compile", compile)
+    accelerator = SimpleNamespace(prepare=lambda m: m, unwrap_model=lambda m: m)
+    official.MossImageNetworkTrainer().prepare_unet_with_accelerator(args, accelerator, model)
+    assert len(calls) == 1 and calls[0]["mode"] is None
+    assert calls[0]["options"]["emulate_precision_casts"] is True
+    for key, value in torch._inductor.list_mode_options(mode).items():
+        assert calls[0]["options"][key] == value
+
+
+def test_per_block_fullgraph_compile_with_lokr_dora_and_checkpointing():
+    modules = pytest.importorskip("lycoris.modules")
+    args = official.setup_parser().parse_args(
+        ["--compile", "--compile_backend", "eager", "--compile_fullgraph"]
+    )
+    model = make_model(layers=2).train()
+    model.requires_grad_(False)
+    model.enable_gradient_checkpointing()
+    adapters = []
+    for name, layer in list(model.named_modules()):
+        if isinstance(layer, torch.nn.Linear):
+            adapter = modules.LokrModule(
+                name, layer, lora_dim=100000, factor=4,
+                full_matrix=True, weight_decompose=True, use_scalar=True,
+            )
+            with torch.no_grad():
+                adapter.lokr_w2.normal_(std=0.02)
+                adapter.scalar.fill_(0.4)
+            adapter.apply_to()
+            adapters.append(adapter)
+    x = torch.randn(1, 128, 2, 2, requires_grad=True)
+    leaves = (x, *(p for adapter in adapters for p in adapter.parameters()))
+    t, context, mask = torch.tensor([250.0]), torch.randn(1, 5, 16), torch.tensor([[1, 1, 1, 0, 0]])
+    expected = model(x, t, context, mask)
+    accelerator = SimpleNamespace(
+        prepare=lambda model: model, unwrap_model=lambda model: model
+    )
+    compiled = official.MossImageNetworkTrainer().prepare_unet_with_accelerator(
+        args, accelerator, model
+    )
+    actual = compiled(x, t, context, mask)
+    torch.testing.assert_close(actual, expected)
+    grad = torch.randn_like(actual)
+    for got, wanted in zip(
+        torch.autograd.grad(actual, leaves, grad),
+        torch.autograd.grad(expected, leaves, grad),
+    ):
+        torch.testing.assert_close(got, wanted)
+    torch._dynamo.reset()
+
+
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_sampling_error_restores_rng_vae_and_block_swap(tmp_path, monkeypatch, device):
     if device == "cuda" and not torch.cuda.is_available():

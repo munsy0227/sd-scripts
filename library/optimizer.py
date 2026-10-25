@@ -252,7 +252,9 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
 
             logger.info(f"use Prodigy optimizer | {optimizer_kwargs}")
             optimizer_class = prodigyopt.Prodigy
-            optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
+            from library.prodigy_optimizer import Prodigy
+
+            optimizer = Prodigy(trainable_params, lr=lr, **optimizer_kwargs)
 
     elif optimizer_type == "Adafactor".lower():
         # 引数を確認して適宜補正する

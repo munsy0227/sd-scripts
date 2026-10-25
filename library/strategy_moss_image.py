@@ -32,6 +32,13 @@ def uint16_to_float32(array: np.ndarray) -> np.ndarray:
     return (array.astype(np.uint32) << 16).view(np.float32)
 
 
+def uint16_to_bf16(array: np.ndarray) -> torch.Tensor:
+    """View cached BF16 bits without expanding the CPU/H2D payload to float32."""
+    if array.dtype != np.uint16:
+        raise ValueError("MOSS cached embeddings must contain uint16 BF16 bits")
+    return torch.from_numpy(array).view(torch.bfloat16)
+
+
 class MossImageTokenizeStrategy(TokenizeStrategy):
     """Tokenizes prompts with the Qwen3.5 tokenizer after applying the chat template. Returns right-padded ids and a mask."""
 
@@ -206,8 +213,8 @@ class MossImageTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrate
 
         return True
 
-    def load_outputs_npz(self, npz_path: str, candidate_index: int = 0) -> List[np.ndarray]:
-        """Returns [prompt_embeds float32 [L, C], attn_mask int32 [L], uncond_embeds float32 [L_u, C], uncond_mask int32 [L_u],
+    def load_outputs_npz(self, npz_path: str, candidate_index: int = 0) -> List[Any]:
+        """Returns [prompt_embeds BF16 [L, C], attn_mask int32 [L], uncond_embeds BF16 [L_u, C], uncond_mask int32 [L_u],
         caption_dropout_rate float32 scalar] of the caption candidate ``candidate_index``.
         The collate function right-pads the variable length arrays with zeros."""
         with np.load(npz_path, allow_pickle=False) as data:
@@ -223,9 +230,9 @@ class MossImageTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrate
                     " Remove --skip_cache_check to re-cache changed captions."
                 )
             return [
-                uint16_to_float32(data[embeds_key]),
+                uint16_to_bf16(data[embeds_key]),
                 data[mask_key],
-                uint16_to_float32(data["uncond_embeds"]),
+                uint16_to_bf16(data["uncond_embeds"]),
                 data["uncond_mask"],
                 data["caption_dropout_rate"],
             ]
@@ -298,12 +305,12 @@ class MossImageTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrate
                     arrays[f"caption_{k}"] = np.array(caption_k)
                 moss_image_cache.write_cache(info.text_encoder_outputs_npz, arrays)
             else:
-                # keep the same format as load_outputs_npz (float32), one tuple per candidate
+                # Own trimmed storage rather than retaining a padded encoder batch.
                 info.text_encoder_outputs = [
                     (
-                        uint16_to_float32(embeds_k),
+                        uint16_to_bf16(embeds_k).clone(),
                         mask_k,
-                        uint16_to_float32(uncond_np),
+                        uint16_to_bf16(uncond_np).clone(),
                         uncond_mask_np,
                         caption_dropout_rate,
                     )

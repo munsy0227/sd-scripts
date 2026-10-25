@@ -366,6 +366,45 @@ CPU로 옮긴 모델과 캐시 계산에도 시스템 RAM이 필요하다. swap 
 전송 비용은 늘어난다. GPU 종류·RAM·해상도·adapter 범위가 달라 고정된 VRAM/속도를 보장하지 않는다.
 block swap을 사용할 때는 microbatch 1 제약도 지킨다.
 
+### LoKR+DoRA 학습 속도
+
+최신 LyCORIS와 이 sd-scripts의 attention 최적화를 함께 사용할 때, 기존 학습 TOML에
+다음 옵션을 추가하면 DiT 블록의 FP32 DoRA 연산을 컴파일러가 합칠 수 있다.
+
+```toml
+compile = true
+```
+
+`compile_mode`는 기본값 `default`부터 사용한다. 첫 실행과 새로운 해상도·텍스트 길이에서는
+컴파일 시간이 들 수 있으므로 워밍업 이후 구간을 비교한다. 초기 LyCORIS 커널 튜닝을 끄려면
+학습 실행 셸에서 `export LYCORIS_KERNEL_TUNE=0`을 지정한다. 이미 저장된 튜닝 결과는 사용할 수 있다.
+
+이 최적화는 한 대상에 어댑터 하나를 적용하는 경로를 단순화하고, attention의 동일한 길이 검사를
+블록마다 반복하지 않도록 한다. block swap을 켜면 Linear가 컴파일에서 제외되어 효과가 제한된다.
+기존 BF16, DoRA FP32 magnitude, checkpointing과 adapter 범위를 유지한다.
+
+MOSS의 Inductor 컴파일은 `emulate_precision_casts`를 켜서 eager 실행의 중간 BF16 반올림을
+보존한다. 선택한 compile mode의 나머지 옵션은 그대로 적용한다. 일반 non-reentrant
+checkpointing에서는 입력 gradient를 강제하지 않으며, block swap·Unsloth offload가
+필요로 하는 입력 gradient는 유지한다.
+
+MOSS 텍스트 캐시는 기존 uint16 디스크 형식을 그대로 읽고 BF16 tensor로 묶는다.
+FP32로 펼쳤다가 다시 BF16으로 바꾸던 과정을 없애 embedding의 CPU 메모리·전송량을 절반으로 줄인다.
+기존 캐시를 다시 만들 필요는 없다.
+
+`optimizer_type="Prodigy"`는 설치된 1.1.2의 CUDA 통계를 모아서 한 번 전송하고,
+파라미터 갱신을 foreach 연산으로 처리한다. optimizer 옵션·상태 형식·저장과 재개는 유지한다.
+단일 CUDA 장치의 decoupled weight decay 경로에 적용하며, CPU·FSDP·여러 장치·공유 storage·
+coupled decay·다른 Prodigy 버전은 원래 구현을 사용한다. 분모 임시 버퍼는 64MiB 또는
+그보다 큰 파라미터 하나의 크기로 제한한다.
+
+RTX 4070의 실제 크기 블록 하나(5440 토큰, 텍스트 mask, LoKR+DoRA, BF16, checkpointing)에서는
+반복 forward/backward가 약 303ms → 193ms, 최대 allocated 메모리가 3248MiB → 1745MiB였다.
+별도로 실제 `moss-full` factor=4 adapter와 같은 1,076개·3.19억 FP32 파라미터의 Prodigy
+단계는 약 148ms → 113ms였고 최대 allocated 메모리는 약 51MiB 늘었다.
+이 측정은 데이터 로딩·전체 5B 모델·RTX 5090 결과가 아니다. 컴파일의 연산 순서에 따른
+수치 차이와 전체 학습 속도·화질·수렴은 별도로 확인해야 한다.
+
 ### H2D-only block swap
 
 기존 `blocks_to_swap` 설정에 다음을 추가한다.

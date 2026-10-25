@@ -1359,10 +1359,6 @@ class BaseDataset(torch.utils.data.Dataset):
             if len(tensors_list) == 0 or tensors_list[0] == None or len(tensors_list[0]) == 0 or tensors_list[0][0] is None:
                 return None
 
-            # old implementation without padding: all elements must have same length
-            # return [torch.stack([converter(x[i]) for x in tensors_list]) for i in range(len(tensors_list[0]))]
-
-            # new implementation with padding support
             result = []
             for i in range(len(tensors_list[0])):
                 tensors = [x[i] for x in tensors_list]
@@ -1392,7 +1388,9 @@ class BaseDataset(torch.utils.data.Dataset):
         example = {}
         example["custom_attributes"] = custom_attributes  # may be list of empty dict
         example["loss_weights"] = torch.FloatTensor(loss_weights)
-        example["text_encoder_outputs_list"] = none_or_stack_elements(text_encoder_outputs_list, torch.FloatTensor)
+        example["text_encoder_outputs_list"] = none_or_stack_elements(
+            text_encoder_outputs_list, lambda x: x if torch.is_tensor(x) else torch.FloatTensor(x)
+        )
         example["input_ids_list"] = none_or_stack_elements(input_ids_list, lambda x: x)
 
         # if one of alpha_masks is not None, we need to replace None with ones

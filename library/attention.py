@@ -1,6 +1,6 @@
 # Unified attention function supporting various implementations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import torch
 from typing import Optional, Union
 
@@ -36,6 +36,17 @@ class AttentionParams:
     seqlens: Optional[torch.Tensor] = None
     cu_seqlens: Optional[torch.Tensor] = None
     max_seqlen: Optional[int] = None
+    uniform_seqlen: int | None = field(default=None, init=False)
+
+    def __post_init__(self):
+        # Resolve mask metadata once, before the same params enter every block.
+        if (
+            not self.split_attn
+            and self.attention_mask is not None
+            and self.seqlens is not None
+            and (self.seqlens.numel() == 1 or torch.all(self.seqlens == self.seqlens[0]))
+        ):
+            self.uniform_seqlen = int(self.seqlens[0].item())
 
     @property
     def supports_fp32(self) -> bool:
@@ -111,7 +122,6 @@ def attention(
     """
     if isinstance(qkv_or_q, list):
         q, k, v = qkv_or_q
-        q: torch.Tensor = q
         qkv_or_q.clear()
         del qkv_or_q
     else:
@@ -123,16 +133,15 @@ def attention(
 
     # If split attn is False, attention mask is provided and all sequence lengths are same, we can trim the sequence
     seqlen_trimmed = False
-    if not attn_params.split_attn and attn_params.attention_mask is not None and attn_params.seqlens is not None:
-        if torch.all(attn_params.seqlens == attn_params.seqlens[0]):
-            seqlen = attn_params.seqlens[0].item()
-            q = q[:, :seqlen]
-            k = k[:, :seqlen]
-            v = v[:, :seqlen]
-            max_seqlen = attn_params.max_seqlen
-            attn_params = AttentionParams.create_attention_params(attn_params.attn_mode, False)  # do not in-place modify
-            attn_params.max_seqlen = max_seqlen  # keep max_seqlen for padding
-            seqlen_trimmed = True
+    if attn_params.uniform_seqlen is not None:
+        seqlen = attn_params.uniform_seqlen
+        q = q[:, :seqlen]
+        k = k[:, :seqlen]
+        v = v[:, :seqlen]
+        max_seqlen = attn_params.max_seqlen
+        attn_params = AttentionParams.create_attention_params(attn_params.attn_mode, False)  # do not in-place modify
+        attn_params.max_seqlen = max_seqlen  # keep max_seqlen for padding
+        seqlen_trimmed = True
 
     # Determine tensor layout based on attention implementation
     if attn_params.attn_mode == "torch" or (

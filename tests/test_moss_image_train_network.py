@@ -56,6 +56,29 @@ def make_args(**overrides):
     return argparse.Namespace(**args)
 
 
+@pytest.mark.parametrize("swapping,unsloth,expected", [(False, False, False), (True, False, True), (False, True, True)])
+def test_checkpoint_input_gradients_are_only_for_offloader_hooks(swapping, unsloth, expected):
+    import moss_image_train_network
+    from library import sd3_train_utils
+
+    trainer = moss_image_train_network.MossImageNetworkTrainer()
+    trainer.is_swapping_blocks = swapping
+    trainer._use_unsloth_offload_checkpointing = unsloth
+    seen = []
+
+    def dit(x, t, context, mask):
+        seen.append((x.requires_grad, context.requires_grad))
+        return x
+
+    trainer.get_noise_pred_and_target(
+        make_args(gradient_checkpointing=True), FakeAccelerator(),
+        sd3_train_utils.FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000, shift=1.0),
+        torch.randn(1, 8, 2, 2), {"custom_attributes": [{}]},
+        [torch.randn(1, 3, 24), torch.ones(1, 3)], dit, None, torch.float32, True,
+    )
+    assert seen == [(expected, expected)]
+
+
 def test_setup_parser_defaults():
     import moss_image_train_network
 

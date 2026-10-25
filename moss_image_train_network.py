@@ -520,8 +520,10 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
         prompt_embeds = prompt_embeds.to(accelerator.device, dtype=weight_dtype)
         attn_mask = attn_mask.to(accelerator.device)
 
-        # Gradient checkpointing (non-reentrant) needs an input which requires grad
-        if args.gradient_checkpointing:
+        # Offloader hooks and Unsloth need input grads; ordinary non-reentrant checkpointing does not.
+        if args.gradient_checkpointing and (
+            self.is_swapping_blocks or self._use_unsloth_offload_checkpointing
+        ):
             noisy_model_input.requires_grad_(True)
             prompt_embeds.requires_grad_(True)
 
@@ -602,6 +604,7 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
             compile_utils.compile_transformer(
                 args, dit, [dit.layers],
                 disable_linear=self.is_swapping_blocks or convrot_int8_utils.is_convrot_int8_model(dit),
+                options={"emulate_precision_casts": True} if args.compile_backend == "inductor" else None,
             )
 
         return model

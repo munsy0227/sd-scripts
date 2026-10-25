@@ -13,6 +13,7 @@ from library.strategy_moss_image import (
     MossImageTokenizeStrategy,
     bf16_to_uint16,
     uint16_to_float32,
+    uint16_to_bf16,
 )
 
 
@@ -57,6 +58,18 @@ def test_bf16_bits_roundtrip():
     restored = uint16_to_float32(bits)
     assert restored.dtype == np.float32
     assert torch.equal(torch.from_numpy(restored), t.float())
+    compact = uint16_to_bf16(bits)
+    assert compact.dtype == torch.bfloat16
+    assert compact.numel() * compact.element_size() == restored.nbytes // 2
+    assert torch.equal(compact.view(torch.int16), t.view(torch.int16))
+
+
+def test_bf16_cache_bits_validate_dtype_and_preserve_all_bit_patterns():
+    bits = np.arange(65536, dtype=np.uint16)
+    restored = uint16_to_bf16(bits)
+    assert np.array_equal(restored.view(torch.int16).numpy().view(np.uint16), bits)
+    with pytest.raises(ValueError, match="uint16 BF16"):
+        uint16_to_bf16(bits.astype(np.float32))
 
 
 def test_tokenize_pads_and_masks():
@@ -163,14 +176,14 @@ def test_text_encoder_outputs_caching_roundtrip(tmp_path, cache_to_disk):
             outputs = info.text_encoder_outputs[0]
         prompt_embeds, attn_mask, uncond_embeds, uncond_mask, rate = outputs
         length = int(expected_mask[i].sum())
-        assert prompt_embeds.dtype == np.float32 and prompt_embeds.shape == (length, 8)  # trimmed, no padding
-        assert torch.equal(torch.from_numpy(prompt_embeds), expected_embeds[i, :length].float())
+        assert prompt_embeds.dtype == torch.bfloat16 and prompt_embeds.shape == (length, 8)  # trimmed, no padding
+        assert prompt_embeds.untyped_storage().nbytes() == prompt_embeds.numel() * 2
+        assert torch.equal(prompt_embeds, expected_embeds[i, :length])
         assert attn_mask.dtype == np.int32 and attn_mask.shape == (length,) and attn_mask.all()
-        assert torch.equal(torch.from_numpy(uncond_embeds), expected_uncond[0].float())
+        assert torch.equal(uncond_embeds, expected_uncond[0])
         assert uncond_mask.shape == (expected_uncond.shape[1],) and uncond_mask.all()
         assert float(rate) == pytest.approx(0.25 * i)
-        # the batch converter of the dataset (torch.FloatTensor) must accept these arrays
-        assert torch.FloatTensor(prompt_embeds).shape == prompt_embeds.shape
+        assert torch.as_tensor(prompt_embeds).dtype == torch.bfloat16
         assert torch.FloatTensor(attn_mask).tolist() == [1.0] * length
 
     # the unconditional embeddings are encoded once and reused
@@ -232,7 +245,7 @@ def test_text_encoder_outputs_caching_multiple_candidates(tmp_path, cache_to_dis
             prompt_embeds, attn_mask, uncond_embeds, uncond_mask, rate = outputs
             length = int(expected_mask[offset + k].sum())
             assert prompt_embeds.shape == (length, 8)
-            assert torch.equal(torch.from_numpy(prompt_embeds), expected_embeds[offset + k, :length].float())
+            assert torch.equal(prompt_embeds, expected_embeds[offset + k, :length])
             assert attn_mask.shape == (length,) and attn_mask.all()
             assert float(rate) == pytest.approx(0.1 * i)
         offset += len(captions)
@@ -274,8 +287,8 @@ def test_text_encoder_outputs_previous_format_is_accepted_for_single_candidate(t
     assert not caching_strategy.is_disk_cached_outputs_expected(npz_path, ["a", "b"])  # must be re-cached
 
     outputs = caching_strategy.load_outputs_npz(npz_path)
-    assert np.array_equal(outputs[0], uint16_to_float32(embeds))
-    assert np.array_equal(outputs[2], uint16_to_float32(uncond))
+    assert torch.equal(outputs[0].float(), torch.from_numpy(uint16_to_float32(embeds)))
+    assert torch.equal(outputs[2].float(), torch.from_numpy(uint16_to_float32(uncond)))
     with pytest.raises(ValueError, match="1 caption candidate"):
         caching_strategy.load_outputs_npz(npz_path, 1)
 

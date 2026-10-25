@@ -13,6 +13,7 @@ import torch
 
 import moss_image_train_network as official
 import moss_train_network as legacy
+from library.custom_offloading_utils import BlockSwapConfig
 from library import (
     moss_image_models,
     moss_image_train_utils,
@@ -245,7 +246,7 @@ def test_sampling_error_restores_rng_vae_and_block_swap(tmp_path, monkeypatch, d
         pytest.skip("CUDA unavailable")
     model = make_model().to(device).train()
     if device == "cuda":
-        model.enable_block_swap(2, torch.device(device))
+        model.enable_block_swap(2, BlockSwapConfig(torch.device(device), supports_backward=True))
     prompts = tmp_path / "prompts.txt"
     prompts.write_text("sample --w 32 --h 32 --s 2")
     args = official.setup_parser().parse_args(

@@ -358,7 +358,7 @@ def validate_datasets(groups, *, cache_text=False, block_swap=False):
                         f"{info.absolute_path}: stochastic captions/layout geometry require disabling text output caching"
                     )
         if cache_text and not group.is_text_encoder_output_cacheable(
-            cache_supports_dropout=True
+            cache_supports_dropout=True, supports_multiple_caption_candidates=True
         ):
             raise ValueError(
                 "MOSS text output caching requires deterministic caption candidates"

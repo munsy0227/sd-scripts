@@ -19,6 +19,7 @@ from library import (
     moss_image_utils,
 )
 from library import strategy_base, strategy_moss_image as strategy_moss
+from library.custom_offloading_utils import BlockSwapConfig
 
 
 def tiny_model():
@@ -343,7 +344,7 @@ def test_text_cache_rejects_changed_caption_and_length(tmp_path):
     )
     subset = SimpleNamespace(caption_format="auto", moss_caption_length="long")
     dataset = SimpleNamespace(
-        process_caption_for_cache=lambda subset, text, geometry: text
+        process_caption_candidates_for_cache=lambda subset, text, geometry: [text]
     )
     cache.prepare_info(info, subset, dataset)
     path = cache.get_outputs_npz_path(info.absolute_path)
@@ -394,7 +395,11 @@ def test_layout_stochastic_geometry_rejects_text_cache():
         MossNetworkTrainer().assert_extra_args(args, group, None)
 
 
-def test_cuda_block_swapping_matches_unswapped_gradients():
+@pytest.mark.parametrize("preset", ["moss", "moss-full"])
+@pytest.mark.parametrize("h2d_only,ring_size,pinned", [
+    (False, 2, False), (True, 1, False), (True, 2, False), (True, 2, True),
+])
+def test_cuda_block_swapping_matches_unswapped_gradients(preset, h2d_only, ring_size, pinned):
     from lycoris import create_lycoris
 
     if not torch.cuda.is_available():
@@ -404,7 +409,7 @@ def test_cuda_block_swapping_matches_unswapped_gradients():
         dim=32,
         ffn_dim=48,
         num_heads=4,
-        num_layers=4,
+        num_layers=6,
         text_dim=16,
         freq_dim=16,
         latent_channels=128,
@@ -420,7 +425,7 @@ def test_cuda_block_swapping_matches_unswapped_gradients():
         model.enable_gradient_checkpointing()
         net = create_lycoris(
             model,
-            preset="moss",
+            preset=preset,
             algo="lokr",
             linear_dim=4,
             full_matrix=True,
@@ -434,7 +439,10 @@ def test_cuda_block_swapping_matches_unswapped_gradients():
         else:
             net.load_state_dict(native)
         if swap:
-            model.enable_block_swap(2, torch.device("cuda"))
+            model.enable_block_swap(4, BlockSwapConfig(
+                torch.device("cuda"), supports_backward=True, h2d_only=h2d_only,
+                ring_size=ring_size, use_pinned_memory=pinned,
+            ))
             model.prepare_block_swap_before_forward()
         opt = torch.optim.SGD(net.parameters(), lr=0.01)
         history = []
@@ -474,7 +482,7 @@ def test_text_cache_migration_preserves_old_bytes_and_tracks_settings(tmp_path):
     )
     subset = SimpleNamespace(caption_format="text", moss_caption_length="long")
     dataset = SimpleNamespace(
-        process_caption_for_cache=lambda subset, text, geometry: text
+        process_caption_candidates_for_cache=lambda subset, text, geometry: [text]
     )
     info.text_encoder_outputs_npz = cache.get_outputs_npz_path(info.absolute_path)
     np.savez(
@@ -505,7 +513,7 @@ def test_text_cache_migration_preserves_old_bytes_and_tracks_settings(tmp_path):
     outputs = cache.load_outputs_npz(info.text_encoder_outputs_npz)
     assert len(outputs) == 5 and outputs[0].dtype == np.float32
     with np.load(info.text_encoder_outputs_npz) as data:
-        assert data["prompt_embeds"].dtype == np.uint16
+        assert data["prompt_embeds_0"].dtype == np.uint16
     info.caption = "updated"
     cache.prepare_info(info, subset, dataset)
     assert not cache.is_disk_cached_outputs_expected(info.text_encoder_outputs_npz)
@@ -613,7 +621,7 @@ def test_encoder_release_after_all_datasets_and_sample_prompts(
     encoders = [encoder]
     subset = SimpleNamespace(caption_format="text", moss_caption_length="long")
     dataset = SimpleNamespace(
-        process_caption_for_cache=lambda subset, text, geometry: text
+        process_caption_candidates_for_cache=lambda subset, text, geometry: [text]
     )
 
     class Group:
@@ -854,7 +862,7 @@ def test_sampling_returns_to_training(tmp_path, device):
     net.apply_to()
     net.to(device=device, dtype=dtype)
     if device == "cuda":
-        model.enable_block_swap(2, torch.device(device))
+        model.enable_block_swap(2, BlockSwapConfig(torch.device(device), supports_backward=True))
         model.prepare_block_swap_before_forward()
     prompts = tmp_path / "samples.json"
     prompts.write_text(

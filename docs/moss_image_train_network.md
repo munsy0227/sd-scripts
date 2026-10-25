@@ -76,6 +76,32 @@ same seed. Existing native state and portable adapter loading are preserved.
 
 ## Optional TE adapters and execution options
 
+### Multiple caption candidates in the text cache
+
+With `enable_multiline_caption=true`, every candidate separated by a
+`multiline_caption_separator` line is cached, and one is selected per step.
+Each candidate receives the configured prefix/suffix before encoding. Cache
+space and encoding work grow with the number of candidates. JSON caption
+length selection and deterministic layout rendering remain supported.
+
+The cache retains model/settings fingerprints, shape checks, atomic writes,
+and backups of replaced files. Existing versioned single-candidate caches
+remain usable; adding candidates or changing their text/settings triggers
+recaching. Layout flips/random crops and other stochastic caption transforms
+still require disabling text-output caching.
+
+### H2D-only block swap
+
+For frozen-base adapter training, add
+`--blocks_to_swap N --block_swap_h2d_only --gradient_checkpointing`.
+CPU master weights are copied only to the GPU.
+`--block_swap_ring_size` defaults to 2; `--use_pinned_memory_for_block_swap`
+optionally pins the CPU master weights. This mode requires CUDA and cannot be
+combined with CPU or unsloth checkpoint offload. Classic block swap remains
+the default. See [Block Swap](block_swap.md). This fork does not include ConvRot INT8.
+
+### Text encoder and compilation
+
 TE adapter training is opt-in at the official entry point:
 
 ```text

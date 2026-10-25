@@ -431,21 +431,19 @@ class MossImage(nn.Module):
     # block swap
 
     def enable_block_swap(
-        self, num_blocks: int, device: torch.device, supports_backward: bool = True
+        self, num_blocks: int, config: custom_offloading_utils.BlockSwapConfig
     ):
         self.blocks_to_swap = num_blocks
         assert self.blocks_to_swap <= self.num_layers - 2, (
             f"Cannot swap more than {self.num_layers - 2} blocks. Requested: {self.blocks_to_swap} blocks."
         )
 
-        self.offloader = custom_offloading_utils.ModelOffloader(
-            self.layers,
-            self.blocks_to_swap,
-            device,
-            supports_backward=supports_backward,
+        self.offloader = custom_offloading_utils.create_offloader(
+            "layer", self.layers, self.num_layers, self.blocks_to_swap, config
         )
         logger.info(
-            f"MossImage: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_layers}, device: {device}."
+            f"MossImage: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_layers}, device: {config.device}."
+            f" Supports backward: {config.supports_backward}. H2D-only: {config.h2d_only}"
         )
 
     def move_to_device_except_swap_blocks(self, device: torch.device):
@@ -582,7 +580,7 @@ class MossImage(nn.Module):
                 hidden = layer(hidden, rope, mod, attn_params)
 
             if self.blocks_to_swap:
-                self.offloader.submit_move_blocks(self.layers, layer_index)
+                self.offloader.submit_move_blocks_forward(self.layers, layer_index)
 
         hidden = self.final_norm_video(
             hidden[:, :img_len].to(self.final_norm_video.weight.dtype)

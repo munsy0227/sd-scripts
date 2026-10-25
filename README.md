@@ -1,6 +1,6 @@
 # sd-scripts
 
-[English](./README.md) / [日本語](./README-ja.md)
+[English](./README.md) / [日本語](./README-ja.md) / [한국어 포크 사용 설명서](./docs/moss_train_network.md)
 
 ## Table of Contents
 <details>
@@ -48,6 +48,8 @@ If you find this project helpful, please consider supporting its development via
 ### Change History
 
 - **Changes planned for the next release:** The following are the main changes planned for the next release. Please note that these changes may be subject to change without notice before the release.
+    - Added optional H2D-only block swap for frozen-base adapter training. See [Block Swap](./docs/block_swap.md). Existing classic block swap remains the default.
+    - MOSS-Image can cache all multi-line caption candidates while retaining this fork's JSON/layout captions and cache fingerprints. See [the MOSS guide](./docs/moss_image_train_network.md).
     - Added `enable_multiline_caption` subset option (`--enable_multiline_caption`) to use captions containing line breaks as they are, for models with LLM-based text encoders (Anima, Lumina, HunyuanImage, etc.).
         - Lines starting with `multiline_caption_separator` (default `---===---`) separate multiple caption candidates for one image, and one candidate is chosen randomly at each step. In metadata files for fine tuning, `caption` can also be a list of strings. For details, please refer to [the dataset config documentation](./docs/config_README-en.md#captions-with-line-breaks-and-multiple-caption-candidates-enable_multiline_caption--true).
         - In `.txt` sample prompt files, `\n` (backslash + n) is now converted to a line break.
@@ -140,7 +142,7 @@ If you find this project helpful, please consider supporting its development via
 
 ### MOSS Image fork extension
 
-* [MOSS Image training, TXT/JSON captions and ComfyUI workflow (Korean)](./docs/moss_train_network.md)
+* [한국어 포크 사용 설명서: MOSS 설치, train.toml, LoKR·DoRA, 다중 캡션 캐시, H2D-only block swap, ComfyUI](./docs/moss_train_network.md)
 * [Official MOSS Image network trainer and generic adapters](./docs/moss_image_train_network.md)
 
 The fork uses the official stage 3 MOSS network trainer, models and cache strategies,

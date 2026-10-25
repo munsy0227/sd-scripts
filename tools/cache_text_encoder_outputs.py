@@ -142,7 +142,8 @@ def cache_to_disk(args: argparse.Namespace) -> None:
         # the text encoder is always used in bf16
         text_encoder = moss_image_utils.load_text_encoder(
             moss_image_utils.checkpoint_file(moss_image_utils.resolve_model_paths(args).text_encoder, "text encoder"),
-            torch.bfloat16, accelerator.device, disable_mmap=args.disable_mmap_load_safetensors
+            torch.bfloat16, accelerator.device, disable_mmap=args.disable_mmap_load_safetensors,
+            convrot_int8=args.convrot_int8_text_encoder,
         )
         text_encoders = [text_encoder]
     else:

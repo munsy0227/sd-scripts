@@ -47,9 +47,22 @@ If you find this project helpful, please consider supporting its development via
 
 ### Change History
 
-- **Changes planned for the next release:** The following are the main changes planned for the next release. Please note that these changes may be subject to change without notice before the release.
-    - Added optional H2D-only block swap for frozen-base adapter training. See [Block Swap](./docs/block_swap.md). Existing classic block swap remains the default.
-    - MOSS-Image can cache all multi-line caption candidates while retaining this fork's JSON/layout captions and cache fingerprints. See [the MOSS guide](./docs/moss_image_train_network.md).
+- **Version 0.12.2 (2026-10-20):**
+    - Added H2D-only block swap (`--block_swap_h2d_only`) for LoRA training, ported from Musubi Tuner. The frozen base weights are kept on the CPU and only copied Host→Device, which removes the Device→Host transfer of the classic block swap and improves the training speed. Supported for FLUX.1 / Chroma, Lumina Image 2.0, HunyuanImage-2.1, Anima and MOSS-Image (not for SD3). `--gradient_checkpointing` is required. For details, please refer to [the documentation](./docs/block_swap.md). [PR #2467](https://github.com/kohya-ss/sd-scripts/pull/2467)
+        - `--block_swap_ring_size` (default 2) sets the number of GPU buffers for the streamed blocks, and `--use_pinned_memory_for_block_swap` keeps the CPU copies in pinned memory for faster transfers.
+        - For developers: `enable_block_swap` of the models now takes a `BlockSwapConfig` instead of a device, and `submit_move_blocks` of the offloader is renamed to `submit_move_blocks_forward`, the same as Musubi Tuner.
+    - The Text Encoder outputs of multiple caption candidates (`enable_multiline_caption` with separator lines) can now be cached for MOSS-Image. All candidates are encoded and stored in one cache file, and one of them is chosen randomly at each step. [PR #2466](https://github.com/kohya-ss/sd-scripts/pull/2466)
+        - The processed caption texts are stored in the cache files, so the cache is rebuilt automatically when captions (or `caption_prefix` / `caption_suffix`) are changed. The cache files created with version 0.12.1 are still valid for images with a single caption.
+        - The cache size and the caching time are multiplied by the number of candidates. Other models still cannot cache the Text Encoder outputs when some captions have multiple candidates.
+        - `tools/cache_text_encoder_outputs.py` now stops with an error for multiple caption candidates with models that do not support them (previously only the first candidate was cached silently).
+
+- **Version 0.12.1 (2026-10-18):**
+    - Added support for LoRA training of [MOSS-Image](https://github.com/OpenMOSS/MOSS-Image) (OpenMOSS), a 5B DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE. [PR #2458](https://github.com/kohya-ss/sd-scripts/pull/2458), [PR #2459](https://github.com/kohya-ss/sd-scripts/pull/2459), [PR #2460](https://github.com/kohya-ss/sd-scripts/pull/2460), [PR #2461](https://github.com/kohya-ss/sd-scripts/pull/2461)
+        - `moss_image_train_network.py` trains LoRA (and LoHa / LoKr) for the DiT and optionally for the text encoder. The official diffusers-format shards and the ComfyUI single-file checkpoints can be loaded. For details, please refer to [the documentation](./docs/moss_image_train_network.md).
+        - ConvRot INT8 quantization of the base weights (`--convrot_int8` for the DiT, `--convrot_int8_text_encoder` for the text encoder, ported from Musubi Tuner) is available as an alternative to fp8. The ComfyUI pre-quantized `*_int8_convrot.safetensors` files are detected automatically. The fused int8 kernels require `triton` (`triton-windows` on Windows).
+        - The DiT LoRA can be used in ComfyUI without conversion. `moss_image_minimal_inference.py` is also available for inference with LoRA.
+        - `tools/cache_latents.py` and `tools/cache_text_encoder_outputs.py` support MOSS-Image with `--moss_image`.
+        - The LoRA module is the new generic `networks.lora_generic` (regex-based module selection, `network_reg_dims` / `network_reg_lrs`, the same as `networks.lora_anima`). It is expected to be the base for other architectures in the future.
     - Added `enable_multiline_caption` subset option (`--enable_multiline_caption`) to use captions containing line breaks as they are, for models with LLM-based text encoders (Anima, Lumina, HunyuanImage, etc.).
         - Lines starting with `multiline_caption_separator` (default `---===---`) separate multiple caption candidates for one image, and one candidate is chosen randomly at each step. In metadata files for fine tuning, `caption` can also be a list of strings. For details, please refer to [the dataset config documentation](./docs/config_README-en.md#captions-with-line-breaks-and-multiple-caption-candidates-enable_multiline_caption--true).
         - In `.txt` sample prompt files, `\n` (backslash + n) is now converted to a line break.
@@ -87,37 +100,6 @@ If you find this project helpful, please consider supporting its development via
     - Fixed the `dpmsolver` and `dpmsingle` samplers of `--sample_sampler` (sample image generation during training) and `--sampler` of `gen_img.py` / `sdxl_gen_img.py`, which failed with an error on recent versions of `diffusers`. [PR #2438](https://github.com/kohya-ss/sd-scripts/pull/2438)
         - The `lms` / `k_lms` samplers require the `scipy` package, which is not included in `requirements.txt`. A clear error message is now shown at startup (instead of at the first sample generation) when `scipy` is missing. Please run `pip install scipy` to use them.
 
-- **Version 0.11.1 (2026-06-16):**
-    - Added support for torch.compile in Anima LoRA/LLLite training. [PR #2379](https://github.com/kohya-ss/sd-scripts/pull/2379)
-        - It seems to speed up training by about 20%. It requires Triton and MSVC compiler. For details, please refer to the [documentation](./docs/anima_torch_compile.md).
-    - Added 2D-only Qwen-Image VAE. [PR #2382](https://github.com/kohya-ss/sd-scripts/pull/2382)
-        - Based on the suggestion by woct0rdho in [issue #2369](https://github.com/kohya-ss/sd-scripts/issues/2369). Thanks to woct0rdho.
-        - Enabled by specifying `--qwen_image_vae_2d`. The weights are the same as the standard (3D) version.
-        - Expected to speed up latent pre-caching (training itself remains unchanged). For details, please refer to the [documentation](./docs/anima_train_network.md#memory-and-speed--メモリ速度関連).
-    - Added support for LLLite inpainting model training. [PR #2378](https://github.com/kohya-ss/sd-scripts/pull/2378)
-        - For details, please refer to the [documentation](./docs/anima_train_control_net_lllite.md).
-    - Added logging of timestep sampling settings and visualization of timesteps distribution. [PR #2384](https://github.com/kohya-ss/sd-scripts/pull/2384)
-        - Visualization makes it easier to understand how training is conducted at different timesteps.
-        - For details, please refer to the [documentation](./docs/anima_train_network.md#visualizing-the-timestep-distribution).
-
-- **Version 0.11.0 (2026-06-12):**
-    - A major internal refactoring of the codebase has been performed to improve code quality and maintainability. [PR #2372](https://github.com/kohya-ss/sd-scripts/pull/2372)
-        - We have made efforts to minimize direct impact on users. For details and bug reports, please refer to [this discussion](https://github.com/kohya-ss/sd-scripts/discussions/2358).
-
-- **Version 0.10.6 (2026-06-12):**
-    - Stable version before refactoring merge.
-
-- **Version 0.10.5 (2026-05-08):**
-    - Support for transformers version 5 and later has been added. Thanks to marcus165090-spec for [PR #2315](https://github.com/kohya-ss/sd-scripts/pull/2315) (followed by [PR #2316](https://github.com/kohya-ss/sd-scripts/pull/2316)).
-        - The `transformers` version in `requirements.txt` remains 4.x, but it also works with 5.x. If you use 5.x for any reason, please also update `diffusers` to the latest version.
-    - Support for ControlNet-LLLite training for Anima has been added. Thanks to [PR #2317](https://github.com/kohya-ss/sd-scripts/pull/2317).
-        - For details, please refer to the [documentation](./docs/anima_train_control_net_lllite.md).
-
-- **Version 0.10.4 (2026-05-07):**
-    - Improved compatibility with Intel GPUs. Thanks to WhitePr for [PR #2307](https://github.com/kohya-ss/sd-scripts/pull/2307).
-    - Support for training inpainting models for SD 1.5/SDXL has been added. Thanks to allanoepping for [PR #2309](https://github.com/kohya-ss/sd-scripts/pull/2309) (followed by [PR #2318](https://github.com/kohya-ss/sd-scripts/pull/2318)).
-        - For details, please refer to the [documentation](./docs/inpainting_training.md).
-
 ### Supported Models
 
 * **Stable Diffusion 1.x/2.x**
@@ -127,12 +109,12 @@ If you find this project helpful, please consider supporting its development via
 * **LUMINA**
 * **HunyuanImage-2.1**
 * **Anima**
-* **MOSS Image** (LoRA / LyCORIS LoKR / LoKR+DoRA adapter training)
+* **MOSS-Image**
 
 ### Features
 
 * LoRA training
-* Fine-tuning (native training, DreamBooth): except for HunyuanImage-2.1 and MOSS Image
+* Fine-tuning (native training, DreamBooth): except for HunyuanImage-2.1
 * Textual Inversion training: SD/SDXL
 * Inpainting model training: SD1.5 and SDXL
 * Image generation
@@ -150,6 +132,7 @@ with text-only Qwen, local folder/shard/ComfyUI floating-point inputs, versioned
 caches, and the existing LyCORIS LoRA/LoKR/DoRA integration. The old
 `moss_train_network.py` remains a compatible entry point.
 
+
 ### Training Documentation (English and Japanese)
 
 * [LoRA Training Overview](./docs/train_network.md)
@@ -161,6 +144,8 @@ caches, and the existing LyCORIS LoRA/LoKR/DoRA integration. The old
 * [FLUX.1 Training](./docs/flux_train_network.md)
 * [LUMINA Training](./docs/lumina_train_network.md)
 * [HunyuanImage-2.1 Training](./docs/hunyuan_image_train_network.md)
+* [Anima Training](./docs/anima_train_network.md)
+* [MOSS-Image Training](./docs/moss_image_train_network.md)
 * [Fine-tuning](./docs/fine_tune.md)
 * [Textual Inversion Training](./docs/train_textual_inversion.md)
 * [ControlNet-LLLite Training](./docs/train_lllite_README.md) / [Japanese version](./docs/train_lllite_README-ja.md)
@@ -168,6 +153,7 @@ caches, and the existing LyCORIS LoRA/LoKR/DoRA integration. The old
 * [Validation](./docs/validation.md)
 * [Masked Loss Training](./docs/masked_loss_README.md) / [Japanese version](./docs/masked_loss_README-ja.md)
 * [Inpainting Training](./docs/inpainting_training.md)
+* [Block Swap (CPU Offloading)](./docs/block_swap.md)
 
 ### Other Documentation (English and Japanese)
 

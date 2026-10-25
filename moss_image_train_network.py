@@ -12,6 +12,8 @@ from library.custom_offloading_utils import BlockSwapConfig
 init_ipex()
 
 from library import (
+    convrot_int8_kernels,
+    convrot_int8_utils,
     flux2_vae,
     flux_train_utils,
     moss_image_models,
@@ -54,6 +56,8 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
         self.paths = None
         self.is_swapping_blocks = False
         self._use_unsloth_offload_checkpointing = False
+        self.dit_convrot_int8 = False
+        self.text_encoder_convrot_int8 = False
         # BatchNorm statistics of the FLUX.2 VAE, kept so that the latents can be normalized after the VAE is freed
         self.bn_running_mean: Optional[torch.Tensor] = None
         self.bn_running_var: Optional[torch.Tensor] = None
@@ -109,9 +113,11 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
             or args.train_inpainting
         ):
             raise ValueError(
-                "MOSS supports dense floating-point models and ordinary TXT/JSON conditioning"
+                "MOSS does not support FP8, weighted captions or inpainting; use supported floating-point/ConvRot models and TXT/JSON conditioning"
             )
         args.fp8_scaled = False
+        if args.convrot_int8_bwd == "int8" and not convrot_int8_kernels.HAS_TRITON:
+            raise ValueError("--convrot_int8_bwd int8 requires triton (triton-windows on Windows)")
         if (
             args.loss_type != "l2"
             or args.min_snr_gamma
@@ -205,8 +211,12 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
             dtype=torch.bfloat16,
             device="cpu",
             disable_mmap=args.disable_mmap_load_safetensors,
+            convrot_int8=args.convrot_int8_text_encoder,
+            convrot_int8_bwd=args.convrot_int8_bwd,
+            calc_device=accelerator.device,
         )
         text_encoder.eval()
+        self.text_encoder_convrot_int8 = convrot_int8_utils.is_convrot_int8_model(text_encoder)
 
         # VAE (FLUX.2) is always float32 (see cast_vae)
         logger.info("Loading FLUX.2 VAE...")
@@ -252,7 +262,15 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
             loading_device,
             weight_dtype,
             disable_mmap=args.disable_mmap_load_safetensors,
+            convrot_int8=args.convrot_int8,
+            convrot_int8_bwd=args.convrot_int8_bwd,
         )
+        self.dit_convrot_int8 = convrot_int8_utils.is_convrot_int8_model(model)
+        if self.dit_convrot_int8 and args.network_module == "lycoris.kohya":
+            raise ValueError(
+                "LyCORIS MOSS adapters require a floating-point DiT; ConvRot INT8 DiT is not supported. "
+                "Use BF16 DiT weights without --convrot_int8, or networks.lora_generic/loha/lokr."
+            )
 
         # The base NetworkTrainer only calls enable_gradient_checkpointing(cpu_offload=...); unsloth is re-applied in
         # prepare_unet_with_accelerator.
@@ -319,6 +337,10 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
 
     def cast_vae(self, args):
         return False  # the VAE stays in float32
+
+    def cast_unet(self, args):
+        # The loader sets weight dtype; preserve ConvRot FP32 scale buffers.
+        return False
 
     def cache_text_encoder_outputs_if_needed(
         self,
@@ -540,13 +562,15 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
         metadata["ss_timestep_sampling"] = args.timestep_sampling
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
         metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
+        metadata["ss_convrot_int8"] = self.dit_convrot_int8
+        metadata["ss_convrot_int8_text_encoder"] = self.text_encoder_convrot_int8
 
     def is_text_encoder_not_needed_for_training(self, args):
         return args.cache_text_encoder_outputs and not self.is_train_text_encoder(args)
 
     def prepare_text_encoder_grad_ckpt_workaround(self, index, text_encoder):
         # Set first parameter's requires_grad to True to workaround Accelerate gradient checkpointing bug
-        first_param = next(text_encoder.parameters())
+        first_param = next(p for p in text_encoder.parameters() if p.is_floating_point())
         first_param.requires_grad_(True)
 
     def prepare_unet_with_accelerator(
@@ -576,7 +600,8 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
             # ModuleList is mutated regardless of any DDP wrapper.
             dit = accelerator.unwrap_model(model)
             compile_utils.compile_transformer(
-                args, dit, [dit.layers], disable_linear=self.is_swapping_blocks
+                args, dit, [dit.layers],
+                disable_linear=self.is_swapping_blocks or convrot_int8_utils.is_convrot_int8_model(dit),
             )
 
         return model

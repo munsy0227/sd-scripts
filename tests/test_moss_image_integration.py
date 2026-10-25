@@ -34,6 +34,43 @@ def make_model(layers=4):
     )
 
 
+@pytest.mark.parametrize("module", ["lycoris.kohya", "networks.lora_generic"])
+def test_convrot_dit_rejects_lycoris_before_adapter_creation(monkeypatch, module):
+    model = make_model()
+    model.is_convrot_int8 = True
+    trainer = official.MossImageNetworkTrainer()
+    args = official.setup_parser().parse_args(["--network_module", module])
+    monkeypatch.setattr(official.moss_image_utils, "checkpoint_file", lambda *a: "dit.safetensors")
+    monkeypatch.setattr(official.moss_image_utils, "load_moss_image_model", lambda *a, **k: model)
+    accelerator = SimpleNamespace(device=torch.device("cpu"))
+    if module == "lycoris.kohya":
+        with pytest.raises(ValueError, match="floating-point DiT"):
+            trainer.load_unet_lazily(args, torch.bfloat16, accelerator, [None])
+    else:
+        loaded, _ = trainer.load_unet_lazily(args, torch.bfloat16, accelerator, [None])
+        assert loaded is model and trainer.dit_convrot_int8
+    assert not trainer.cast_unet(args)
+
+
+def test_convrot_qwen_changes_cache_identity_without_changing_dense_identity():
+    from library import moss_image_utils
+
+    args = official.setup_parser().parse_args([])
+    paths = SimpleNamespace(text_encoder=None, tokenizer=None)
+    dense = moss_image_utils.text_cache_identity(args, paths)
+    args.convrot_int8_text_encoder = True
+    quantized = moss_image_utils.text_cache_identity(args, paths)
+    assert quantized == {**dense, "quantization": "convrot_int8"}
+
+
+def test_quantized_text_encoder_checkpoint_workaround_selects_floating_parameter():
+    encoder = torch.nn.Module()
+    encoder.register_parameter("tokens", torch.nn.Parameter(torch.zeros(4, 4, dtype=torch.int8), requires_grad=False))
+    encoder.register_parameter("norm", torch.nn.Parameter(torch.ones(4), requires_grad=False))
+    official.MossImageNetworkTrainer().prepare_text_encoder_grad_ckpt_workaround(0, encoder)
+    assert encoder.norm.requires_grad and not encoder.tokens.requires_grad
+
+
 @pytest.mark.parametrize("entry", [official, legacy])
 def test_validation_reuses_cached_batch_without_dropout_or_mutation(monkeypatch, entry):
     args = entry.setup_parser().parse_args([])

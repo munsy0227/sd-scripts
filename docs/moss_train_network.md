@@ -5,6 +5,7 @@
 다중 캡션 캐시, H2D-only block swap을 연결한 포크다.
 
 기준은 2026-10-25의 `codex/sd-scripts-moss-dev-integration` 작업 트리다.
+원본 `main` v0.12.2(`11d8ced`)를 병합하고 포크 전용 캡션·캐시·LoKR/DoRA 수정을 유지한다.
 포크의 `main`과 작업 브랜치는 MOSS 구현이 다르며, 원격 브랜치에 아직 반영되지 않은
 로컬 변경이 있을 수 있다. 다른 버전을 사용한다면 해당 버전의 `--help`도 확인한다.
 SDXL·FLUX·Anima 등은 [모델별 문서](#다른-모델과-상세-문서)를 참고한다.
@@ -125,9 +126,14 @@ tokenizer_cache_dir = "/models/moss-tokenizer"
 위 파일명은 경로 예시다. 실제 받은 파일명으로 바꾼다. 명시한 `text_encoder`와 `vae`는
 모델 루트에서 자동 탐색한 경로보다 우선한다.
 
-이 포크의 MOSS 학습에는 BF16 등 **실수형 가중치**를 사용한다.
-ConvRot INT8은 통합하지 않았고, 현재 LyCORIS full-matrix LoKR+DoRA와도 호환되지 않는다.
-`fp8_base` 등으로 대신 양자화하는 경로도 지원하지 않는다.
+이 문서의 LyCORIS MOSS 구성에는 BF16 등 **실수형 DiT 가중치**를 사용한다.
+원본 main 동기화로 ConvRot INT8 로더도 포함되지만, 현재 LyCORIS adapter는 INT8 DiT를
+해석하지 못하므로 초기화 단계에서 차단한다. INT8 DiT는 공식 `networks.lora_generic`,
+`networks.loha`, `networks.lokr` 경로를 사용한다. `fp8_base`는 지원하지 않는다.
+
+Qwen만 양자화하려면 `convrot_int8_text_encoder=true`를 별도로 지정할 수 있다.
+이 경우 DiT를 BF16으로 유지하며, 텍스트 캐시의 encoder 설정 식별도 달라진다.
+INT8의 지원 경로와 제약은 [공식 진입점 가이드](moss_image_train_network.md)를 참고한다.
 
 오프라인에서는 토크나이저 파일을 모두 준비하고 `tokenizer_cache_dir`를 명시한다.
 `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`을 설정하면 허브 접근을 막을 수 있다.
@@ -521,20 +527,20 @@ MOSS edit LoRA의 reference conditioning은 이 문서의 T2I 학습 범위에 �
 
 ## 검증 범위
 
-현재 선별 이식 코드는 Linux의 RTX 4070에서 확인했다.
+원본 main 동기화 코드는 Linux의 RTX 4070에서 확인했다.
 
 | 검사 | 확인한 내용 |
 | --- | --- |
-| CPU 선택 검사 | 109 passed. 캡션 처리, 다중 후보 캐시, fingerprint·백업, 축소 모델·트레이너, 공통 offloader |
-| CUDA 선택 검사 | 40 passed. H2D ring/pinned 설정, 출력·gradient, 두 LyCORIS 프리셋의 LoKR+DoRA, 축소 BF16 저장·재개 |
-| 실제 작업 경로 재확인 | 캐시와 CUDA LoKR+DoRA block swap 21 passed |
+| CPU 선택 검사 | 164 passed. 캡션·캐시·축소 모델·공통 offloader, 실제 축소 Qwen/VAE, INT8 로더와 차단 조건 |
+| CUDA 접근 환경 검사 | 58 passed. H2D, 두 LyCORIS 프리셋의 LoKR+DoRA, 축소 BF16 저장·재개, Qwen과 INT8 kernel. XPU·MPS 2개는 해당 장치가 없어 skip |
 
-세 선택은 일부 겹치므로 고유 테스트 수로 합산하지 않는다. 전체 5B/9B 가중치의 장시간 학습,
+전체 5B/9B 가중치의 장시간 학습,
 화질 비교, 속도·최대 메모리 수치, Windows/MPS는 이번 검사에서 확인하지 않았다.
-현재 기존 가상환경의 Qwen/VAE 실제 클래스 검사는 의존성 버전 제약으로 제외했다.
-이전 통합에서 수행한 별도 환경의 검사와 이번 실행 결과는
+이번에는 요구 버전의 라이브러리를 임시 환경에 준비해 실제 축소 Qwen/VAE 클래스도 검사했다.
+사용자의 기존 가상환경 패키지를 자동으로 바꾸지는 않았다. 이전 검사와 이번 실행 결과는
 [기존 통합 기록](../.ai/worklogs/2026-10-18-official-moss-dev-integration.md),
-[이번 선별 이식 기록](../.ai/worklogs/2026-10-25-selected-moss-upstream.md)에 구분해 남겼다.
+[선별 이식 기록](../.ai/worklogs/2026-10-25-selected-moss-upstream.md),
+[원본 main 동기화 기록](../.ai/worklogs/2026-10-25-upstream-main-sync.md)에 구분해 남겼다.
 
 ## 다른 모델과 상세 문서
 

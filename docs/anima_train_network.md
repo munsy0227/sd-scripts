@@ -116,6 +116,7 @@ accelerate launch --num_cpu_threads_per_process 1 anima_train_network.py \
   --save_model_as=safetensors \
   --network_module=networks.lora_anima \
   --network_dim=8 \
+  --network_train_unet_only \
   --learning_rate=1e-4 \
   --optimizer_type="AdamW8bit" \
   --lr_scheduler="constant" \
@@ -526,7 +527,7 @@ Caption dropout uses the `caption_dropout_rate` setting from the dataset configu
 
 **If you change the `caption_dropout_rate` setting, you must delete and regenerate the cache.**
 
-Note: Currently, only Anima supports combining `caption_dropout_rate` with text encoder output caching.
+Note: Currently, only Anima and MOSS-Image support combining `caption_dropout_rate` with text encoder output caching.
 
 <details>
 <summary>日本語</summary>
@@ -565,7 +566,7 @@ Note: Currently, only Anima supports combining `caption_dropout_rate` with text 
 
 **`caption_dropout_rate`の設定を変えた場合、キャッシュを削除し、再生成する必要があります。**
 
-※`caption_dropout_rate`をテキストエンコーダー出力キャッシュと組み合わせられるのは、今のところAnimaのみです。
+※`caption_dropout_rate`をテキストエンコーダー出力キャッシュと組み合わせられるのは、今のところAnimaとMOSS-Imageのみです。
 
 </details>
 

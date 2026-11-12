@@ -600,10 +600,11 @@ class MossImageNetworkTrainer(train_network.NetworkTrainer):
         if args.compile:
             # Per-block torch.compile of the 42 main blocks. Reach the real model via unwrap_model so the underlying
             # ModuleList is mutated regardless of any DDP wrapper.
+            # ConvRot INT8 custom ops compile; block swapping still excludes Linear.
             dit = accelerator.unwrap_model(model)
             compile_utils.compile_transformer(
                 args, dit, [dit.layers],
-                disable_linear=self.is_swapping_blocks or convrot_int8_utils.is_convrot_int8_model(dit),
+                disable_linear=self.is_swapping_blocks,
                 options={"emulate_precision_casts": True} if args.compile_backend == "inductor" else None,
             )
 

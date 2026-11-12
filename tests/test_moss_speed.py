@@ -62,6 +62,27 @@ def test_plain_checkpoint_preserves_adapter_gradients_without_input_gradients(pr
         torch.testing.assert_close(got, expected, rtol=0, atol=0)
 
 
+def test_int8_compile_keeps_precision_options_without_disabling_linear(monkeypatch):
+    model = torch.nn.Module()
+    model.layers = torch.nn.ModuleList()
+    args = official.setup_parser().parse_args(["--compile"])
+    accelerator = SimpleNamespace(prepare=lambda m: m, unwrap_model=lambda m: m)
+    captured = {}
+    monkeypatch.setattr(
+        official.convrot_int8_utils, "is_convrot_int8_model", lambda model: True
+    )
+    monkeypatch.setattr(
+        official.compile_utils,
+        "compile_transformer",
+        lambda *args, **kwargs: captured.update(kwargs),
+    )
+    official.MossImageNetworkTrainer().prepare_unet_with_accelerator(
+        args, accelerator, model
+    )
+    assert captured["disable_linear"] is False
+    assert captured["options"] == {"emulate_precision_casts": True}
+
+
 def make_block():
     modules = pytest.importorskip("lycoris.modules")
     torch.manual_seed(42)

@@ -99,6 +99,16 @@ def test_setup_parser_defaults():
     assert args.tokenizer_cache_dir is None and args.vae is None
 
 
+@pytest.mark.parametrize("sampling", ["legacy", "truncated_logit_normal"])
+def test_setup_parser_keeps_fork_and_upstream_sampling(sampling):
+    import moss_image_train_network
+
+    args = moss_image_train_network.setup_parser().parse_args(
+        ["--timestep_sampling", sampling]
+    )
+    assert args.timestep_sampling == sampling
+
+
 def test_shift_scale_latents_matches_vae_helper():
     import moss_image_train_network
 
@@ -122,7 +132,9 @@ def test_shift_scale_latents_matches_vae_helper():
     torch.testing.assert_close(restored, raw, atol=1e-5, rtol=1e-5)
 
 
-@pytest.mark.parametrize("timestep_sampling", ["sigma", "sigmoid", "shift"])
+@pytest.mark.parametrize(
+    "timestep_sampling", ["sigma", "sigmoid", "shift", "truncated_logit_normal"]
+)
 def test_get_noise_pred_and_target(timestep_sampling):
     import moss_image_train_network
     from library import sd3_train_utils

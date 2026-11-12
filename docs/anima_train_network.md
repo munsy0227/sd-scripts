@@ -223,12 +223,16 @@ For LoRA training, use `network_reg_lrs` in `--network_args` instead. See [Secti
   - Cache text encoder outputs to disk. Auto-enables `--cache_text_encoder_outputs`.
 * `--cache_latents`, `--cache_latents_to_disk`
   - Cache Qwen-Image VAE latent outputs.
+* `--gradient_checkpointing`
+  - Ordinary non-reentrant checkpointing avoids forcing gradients on frozen latent/text inputs, reducing unnecessary backward work. Existing text-encoder or adapter gradients remain connected.
+  - Block swapping, Unsloth and CPU offload retain their existing input-gradient handling.
 * `--vae_chunk_size=<integer>`
   - Chunk size for Qwen-Image VAE processing. Reduces VRAM usage at the cost of speed. Default is no chunking.
 * `--vae_disable_cache`
   - Disable internal caching in Qwen-Image VAE to reduce VRAM usage.
 * `--compile` and related options
   - Speed up training with per-block `torch.compile`. See the [torch.compile for Anima guide](anima_torch_compile.md) for details.
+  - Inductor uses `emulate_precision_casts=True` to preserve eager low-precision rounding, as in the MOSS trainer. This is a numerical guard, not an independent speed guarantee.
 * `--qwen_image_vae_2d`
   - Use the image-only 2D Qwen-Image VAE. The official (3D causal Conv3d) VAE weights are converted to equivalent 2D convolutions on load, so no separate weight file is needed and, for single images, the latents are numerically equivalent to the default 3D VAE. This is roughly 2x faster and uses about 1/3 of the peak VRAM for encode/decode (e.g., about 4.4 GB / 7.7 s -> about 1.4 GB / 4.5 s for 10 images at 1024x1024 on an RTX 3090). Recommended for latent caching. Note: with the 2D VAE the peak memory is dominated by full-resolution activations and the mid-block attention, so `--vae_chunk_size` has little further effect on the peak, and `--vae_disable_cache` is a no-op (the 2D VAE has no temporal cache).
 

@@ -307,8 +307,12 @@ class AnimaNetworkTrainer(train_network.NetworkTrainer):
         )
         timesteps = timesteps / 1000.0  # scale to [0, 1] range. timesteps is float32
 
-        # Gradient checkpointing support
-        if args.gradient_checkpointing:
+        # Ordinary non-reentrant checkpointing does not need input gradients.
+        if args.gradient_checkpointing and (
+            self.is_swapping_blocks
+            or self._use_unsloth_offload_checkpointing
+            or args.cpu_offload_checkpointing
+        ):
             noisy_model_input.requires_grad_(True)
             for t in text_encoder_conds:
                 if t is not None and t.dtype.is_floating_point:
@@ -451,7 +455,17 @@ class AnimaNetworkTrainer(train_network.NetworkTrainer):
             # Apply per-block torch.compile to the DiT blocks. Reach the real Anima via
             # unwrap_model so we mutate the underlying ModuleList regardless of any DDP wrapper.
             dit = accelerator.unwrap_model(model)
-            compile_utils.compile_transformer(args, dit, [dit.blocks], disable_linear=self.is_swapping_blocks)
+            compile_utils.compile_transformer(
+                args,
+                dit,
+                [dit.blocks],
+                disable_linear=self.is_swapping_blocks,
+                options=(
+                    {"emulate_precision_casts": True}
+                    if args.compile_backend == "inductor"
+                    else None
+                ),
+            )
 
         return model
 

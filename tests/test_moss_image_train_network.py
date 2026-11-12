@@ -42,6 +42,8 @@ def make_args(**overrides):
         weighting_scheme="logit_normal",
         logit_mean=-1.09,
         logit_std=0.95,
+        timestep_cutoff=0.95,
+        timestep_uniform_ratio=0.01,
         mode_scale=1.29,
         sigmoid_scale=1.0,
         discrete_flow_shift=1.0,
